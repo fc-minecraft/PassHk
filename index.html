@@ -297,7 +297,7 @@
         const hasNumbersText = document.getElementById('hasNumbers');
         const hasSymbolsText = document.getElementById('hasSymbols');
 
-        let bruteForceWorker;
+        let bruteForceWorker = null;
         let bruteForceOperationsPerSec = 0;
 
         // Символы для анализа и подбора (включая русские)
@@ -438,10 +438,7 @@
 
         const workerCode = `
             self.onmessage = (event) => {
-                if (event.data.command === 'stop') {
-                    self.stopped = true;
-                } else if (event.data.command === 'start') {
-                    self.stopped = false;
+                if (event.data.command === 'start') {
                     const { password, charset, startTime } = event.data;
                     const charsetSize = charset.length;
                     const passwordLength = password.length;
@@ -450,7 +447,7 @@
                     
                     const guessArr = new Array(passwordLength).fill(charset[0]);
                     
-                    while (!self.stopped) {
+                    while (true) {
                         attempts++;
                         let currentGuess = guessArr.join('');
 
@@ -479,9 +476,7 @@
                             break; 
                         }
                     }
-                    if (!self.stopped) {
-                        self.postMessage({ type: 'finished', attempts, totalTime: Date.now() - startTime });
-                    }
+                    self.postMessage({ type: 'finished', attempts, totalTime: Date.now() - startTime });
                 }
             };
         `;
@@ -499,7 +494,9 @@
         };
 
         const initWorker = () => {
-            if (bruteForceWorker) bruteForceWorker.terminate();
+            if (bruteForceWorker) {
+                bruteForceWorker.terminate();
+            }
             bruteForceWorker = new Worker(workerUrl);
             bruteForceWorker.onmessage = (event) => {
                 const { type, attempts, password, totalTime } = event.data;
@@ -510,17 +507,23 @@
                 } else if (type === 'found') {
                     bruteForceResult.textContent = `Пароль найден: "${password}" за ${attempts.toLocaleString('ru-RU')} попыток! (${formatTime(totalTime)})`;
                     bruteForceResult.style.color = '#10b981';
-                    bruteForceBtn.textContent = 'Начать подбор пароля';
-                    passInp.disabled = false;
-                    generateBtn.disabled = false;
+                    resetBruteForceUI();
                 } else if (type === 'finished') {
                     bruteForceResult.textContent = `Подбор завершен. Проверено ${attempts.toLocaleString('ru-RU')} комбинаций за ${formatTime(totalTime)}.`;
                     bruteForceResult.style.color = '#ef4444';
-                    bruteForceBtn.textContent = 'Начать подбор пароля';
-                    passInp.disabled = false;
-                    generateBtn.disabled = false;
+                    resetBruteForceUI();
                 }
             };
+        };
+
+        const resetBruteForceUI = () => {
+            bruteForceBtn.textContent = 'Начать подбор пароля';
+            passInp.disabled = false;
+            generateBtn.disabled = false;
+            if (bruteForceWorker) {
+                bruteForceWorker.terminate();
+                bruteForceWorker = null;
+            }
         };
 
         const startBruteForce = () => {
@@ -547,9 +550,7 @@
                 bruteForceResult.textContent = 'Пароль не содержит поддерживаемых символов!';
                 bruteForceResult.style.color = '#ef4444';
                 bruteForceResult.style.display = 'block';
-                bruteForceBtn.textContent = 'Начать подбор пароля';
-                passInp.disabled = false;
-                generateBtn.disabled = false;
+                resetBruteForceUI();
                 return;
             }
 
@@ -561,12 +562,9 @@
             if (bruteForceBtn.textContent === 'Начать подбор пароля') {
                 startBruteForce();
             } else {
-                bruteForceWorker.postMessage({ command: 'stop' });
+                resetBruteForceUI();
                 bruteForceResult.textContent = 'Подбор остановлен.';
                 bruteForceResult.style.color = '#ef4444';
-                bruteForceBtn.textContent = 'Начать подбор пароля';
-                passInp.disabled = false;
-                generateBtn.disabled = false;
             }
         });
 
